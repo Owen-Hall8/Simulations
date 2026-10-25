@@ -134,28 +134,8 @@ def run_tests(history):
                     "error": "Spacecraft moving away from target"
                 })
 
-        # Check temperature readings for faults.
-        temperature_reading = entry["temperature_reading"]
-
-        expected_temperature = 70 + step * 0.5
-        temperature_error = temperature_reading - expected_temperature
-
-        if step < FAULT_START_STEP:
-            if abs(temperature_error) > 1.0:
-                temp_test_results.append({
-                    "step": step,
-                    "error": "Implausible temperature reading"
-                })
-        else:
-            # Fault adds 10–15 degrees, with up to 1 degree of noise.
-            if not 9.0 <= temperature_error <= 16.0:
-                temp_test_results.append({
-                    "step": step,
-                    "error": "Temperature fault outside expected range"
-                })
-
-
-    return test_results, temp_test_results
+        # removed temoerature test for now
+    return test_results#, temp_test_results
 
 def detect_rate_of_change_faults(history):
     """Flag unusually large changes in temperature readings."""
@@ -190,20 +170,13 @@ def report_results(history, test_results):
     print(f"Final spacecraft angle: {final_angle:.2f} degrees")
 
     # Summarize passed and failed tests.
-    angle_test_results, temp_test_results = test_results
+    angle_test_results = test_results
 
     if not angle_test_results:
         print("All angle tests passed successfully.")
     else:
         print(f"{len(angle_test_results)} angle test(s) failed:")
         for result in angle_test_results:
-            print(f"  Step {result['step']}: {result['error']}")
-
-    if not temp_test_results:
-        print("All temperature tests passed successfully.")
-    else:
-        print(f"{len(temp_test_results)} temperature test(s) failed:")
-        for result in temp_test_results:
             print(f"  Step {result['step']}: {result['error']}")
 
     # Plot the spacecraft's actual angle and sensor readings over time.

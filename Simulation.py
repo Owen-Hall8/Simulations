@@ -39,6 +39,9 @@ def simulate_spacecraft():
         # Generate a sensor reading from actual_angle.
         sensor_reading = read_sensor(actual_angle, step)
 
+        # Generate a temperature sensor reading.
+        temperature_reading = read_temperature_sensor(step)
+
         # Calculate a control command that moves the spacecraft toward TARGET_ANGLE.
         control_command = TARGET_ANGLE - sensor_reading
 
@@ -73,6 +76,22 @@ def read_sensor(actual_angle, step):
 
     return sensor_reading
 
+def read_temperature_sensor(step):
+        """Generate a temperature sensor reading, including noise and faults."""
+        
+        # Base temperature value that changes over time.
+        base_temperature = 70 + step * 0.5  # Assume temperature increases slightly over time.
+        
+        # Add random noise to the temperature reading.
+        noise = random.uniform(-1.0, 1.0)  # Temperature noise range.
+        temperature_reading = base_temperature + noise
+        
+        # Introduce a fault in the temperature sensor after FAULT_START_STEP.
+        if step >= FAULT_START_STEP:
+            temperature_reading += random.uniform(10.0, 15.0)  # Fault adds a significant offset.
+        
+        return temperature_reading
+
 
 # ============================================================
 # 4. AUTOMATED TESTING
@@ -82,6 +101,7 @@ def run_tests(history):
     """Check whether the simulated spacecraft behaves correctly."""
 
     test_results = []
+    temp_test_results = []
 
     for entry in history:
         step = entry["step"]
@@ -90,7 +110,8 @@ def run_tests(history):
         control_command = entry["control_command"]
 
         # Check whether sensor readings are plausible.
-        plausible = abs(sensor_reading - actual_angle) <= SENSOR_NOISE + FAULT_OFFSET
+        MAX_SENSOR_ERROR = 0.5
+        plausible = abs(sensor_reading - actual_angle) <= MAX_SENSOR_ERROR
         if not plausible:
             test_results.append({"step": step, "error": "Implausible sensor reading"})
 
@@ -102,7 +123,18 @@ def run_tests(history):
         if step > 0 and abs(actual_angle - TARGET_ANGLE) > abs(history[step - 1]["actual_angle"] - TARGET_ANGLE):
             test_results.append({"step": step, "error": "Spacecraft moving away from target"})
 
-    return test_results
+        # Check temperature readings for faults.
+        temperature_reading = read_temperature_sensor(step)
+        MAX_TEMPERATURE_NOISE = 1.0
+        if step < FAULT_START_STEP:
+            plausible_temperature = abs(temperature_reading - (70 + step * 0.5)) <= MAX_TEMPERATURE_NOISE
+            if not plausible_temperature:
+                temp_test_results.append({"step": step, "error": "Implausible temperature reading"})
+        else:
+            if temperature_reading < 80 or temperature_reading > 85:  # Expected fault range.
+                temp_test_results.append({"step": step, "error": "Temperature fault not within expected range"})
+
+    return test_results, temp_test_results
 
 
 # ============================================================
@@ -117,11 +149,20 @@ def report_results(history, test_results):
     print(f"Final spacecraft angle: {final_angle:.2f} degrees")
 
     # Summarize passed and failed tests.
-    if not test_results:
-        print("All tests passed successfully.")
+    angle_test_results, temp_test_results = test_results
+
+    if not angle_test_results:
+        print("All angle tests passed successfully.")
     else:
-        print(f"{len(test_results)} test(s) failed:")
-        for result in test_results:
+        print(f"{len(angle_test_results)} angle test(s) failed:")
+        for result in angle_test_results:
+            print(f"  Step {result['step']}: {result['error']}")
+
+    if not temp_test_results:
+        print("All temperature tests passed successfully.")
+    else:
+        print(f"{len(temp_test_results)} temperature test(s) failed:")
+        for result in temp_test_results:
             print(f"  Step {result['step']}: {result['error']}")
 
     # Plot the spacecraft's actual angle and sensor readings over time.
@@ -131,7 +172,10 @@ def report_results(history, test_results):
     actual_angles = [entry["actual_angle"] for entry in history]
     sensor_readings = [entry["sensor_reading"] for entry in history]
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 8))
+
+    # Plot angle data.
+    plt.subplot(2, 1, 1)
     plt.plot(steps, actual_angles, label="Actual Angle", marker='o')
     plt.plot(steps, sensor_readings, label="Sensor Reading", linestyle='--', marker='x')
     plt.axvline(x=FAULT_START_STEP, color='red', linestyle='--', label="Fault Start")
@@ -140,6 +184,19 @@ def report_results(history, test_results):
     plt.title("Spacecraft Angle and Sensor Readings Over Time")
     plt.legend()
     plt.grid(True)
+
+    # Plot temperature data.
+    temperature_readings = [read_temperature_sensor(step) for step in steps]
+    plt.subplot(2, 1, 2)
+    plt.plot(steps, temperature_readings, label="Temperature Reading", color='orange', marker='s')
+    plt.axvline(x=FAULT_START_STEP, color='red', linestyle='--', label="Fault Start")
+    plt.xlabel("Time Step")
+    plt.ylabel("Temperature (°F)")
+    plt.title("Temperature Sensor Readings Over Time")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
     plt.show()
 
 

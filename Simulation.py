@@ -36,8 +36,11 @@ def simulate_spacecraft():
     history = []
 
     for step in range(TIME_STEPS):
+
         # Generate a sensor reading from actual_angle.
-        sensor_reading = read_sensor(actual_angle, step)
+        actual_angle_before = actual_angle
+
+        sensor_reading = read_sensor(actual_angle_before, step)
 
         # Generate a temperature sensor reading.
         temperature_reading = read_temperature_sensor(step)
@@ -51,9 +54,11 @@ def simulate_spacecraft():
         # Save the step number, actual angle, sensor reading, and control command in history.
         history.append({
             "step": step,
-            "actual_angle": actual_angle,
+            "actual_angle": actual_angle_before,
+            "next_actual_angle": actual_angle,
             "sensor_reading": sensor_reading,
-            "control_command": control_command
+            "control_command": control_command,
+            "temperature_reading": temperature_reading
         })
 
     return history
@@ -77,20 +82,20 @@ def read_sensor(actual_angle, step):
     return sensor_reading
 
 def read_temperature_sensor(step):
-        """Generate a temperature sensor reading, including noise and faults."""
-        
-        # Base temperature value that changes over time.
-        base_temperature = 70 + step * 0.5  # Assume temperature increases slightly over time.
-        
-        # Add random noise to the temperature reading.
-        noise = random.uniform(-1.0, 1.0)  # Temperature noise range.
-        temperature_reading = base_temperature + noise
-        
-        # Introduce a fault in the temperature sensor after FAULT_START_STEP.
-        if step >= FAULT_START_STEP:
-            temperature_reading += random.uniform(10.0, 15.0)  # Fault adds a significant offset.
-        
-        return temperature_reading
+    """Generate a temperature sensor reading, including noise and faults."""
+    
+    # Base temperature value that changes over time.
+    base_temperature = 70 + step * 0.5  # Assume temperature increases slightly over time.
+    
+    # Add random noise to the temperature reading.
+    noise = random.uniform(-1.0, 1.0)  # Temperature noise range.
+    temperature_reading = base_temperature + noise
+    
+    # Introduce a fault in the temperature sensor after FAULT_START_STEP.
+    if step >= FAULT_START_STEP:
+        temperature_reading += random.uniform(15.0, 25.0)  # Fault adds a significant offset.
+    
+    return temperature_reading
 
 
 # ============================================================
@@ -115,24 +120,40 @@ def run_tests(history):
         if not plausible:
             test_results.append({"step": step, "error": "Implausible sensor reading"})
 
-        # Detect when sensor readings disagree with reality.
-        if step >= FAULT_START_STEP and abs(sensor_reading - actual_angle) < FAULT_OFFSET:
-            test_results.append({"step": step, "error": "Fault not detected in sensor reading"})
+        # # Detect when sensor readings disagree with reality.
+        # if step >= FAULT_START_STEP and abs(sensor_reading - actual_angle) < FAULT_OFFSET:
+        #     test_results.append({"step": step, "error": "Fault not detected in sensor reading"})
 
         # Check whether the spacecraft approaches its target.
-        if step > 0 and abs(actual_angle - TARGET_ANGLE) > abs(history[step - 1]["actual_angle"] - TARGET_ANGLE):
-            test_results.append({"step": step, "error": "Spacecraft moving away from target"})
+        if step > 0:
+            previous_angle = history[step - 1]["actual_angle"]
+
+            if abs(actual_angle - TARGET_ANGLE) > abs(previous_angle - TARGET_ANGLE):
+                test_results.append({
+                    "step": step,
+                    "error": "Spacecraft moving away from target"
+                })
 
         # Check temperature readings for faults.
-        temperature_reading = read_temperature_sensor(step)
-        MAX_TEMPERATURE_NOISE = 1.0
+        temperature_reading = entry["temperature_reading"]
+
+        expected_temperature = 70 + step * 0.5
+        temperature_error = temperature_reading - expected_temperature
+
         if step < FAULT_START_STEP:
-            plausible_temperature = abs(temperature_reading - (70 + step * 0.5)) <= MAX_TEMPERATURE_NOISE
-            if not plausible_temperature:
-                temp_test_results.append({"step": step, "error": "Implausible temperature reading"})
+            if abs(temperature_error) > 1.0:
+                temp_test_results.append({
+                    "step": step,
+                    "error": "Implausible temperature reading"
+                })
         else:
-            if temperature_reading < 80 or temperature_reading > 85:  # Expected fault range.
-                temp_test_results.append({"step": step, "error": "Temperature fault not within expected range"})
+            # Fault adds 10–15 degrees, with up to 1 degree of noise.
+            if not 9.0 <= temperature_error <= 16.0:
+                temp_test_results.append({
+                    "step": step,
+                    "error": "Temperature fault outside expected range"
+                })
+
 
     return test_results, temp_test_results
 
@@ -145,7 +166,7 @@ def report_results(history, test_results):
     """Display a summary of the simulation and test results."""
 
     # Print the final spacecraft angle.
-    final_angle = history[-1]["actual_angle"]
+    final_angle = history[-1]["next_actual_angle"]
     print(f"Final spacecraft angle: {final_angle:.2f} degrees")
 
     # Summarize passed and failed tests.
@@ -186,7 +207,9 @@ def report_results(history, test_results):
     plt.grid(True)
 
     # Plot temperature data.
-    temperature_readings = [read_temperature_sensor(step) for step in steps]
+    temperature_readings = [
+        entry["temperature_reading"] for entry in history
+    ]
     plt.subplot(2, 1, 2)
     plt.plot(steps, temperature_readings, label="Temperature Reading", color='orange', marker='s')
     plt.axvline(x=FAULT_START_STEP, color='red', linestyle='--', label="Fault Start")

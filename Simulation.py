@@ -93,7 +93,7 @@ def read_temperature_sensor(step):
     
     # Introduce a fault in the temperature sensor after FAULT_START_STEP.
     if step >= FAULT_START_STEP:
-        temperature_reading += random.uniform(15.0, 25.0)  # Fault adds a significant offset.
+        temperature_reading += 20.0
     
     return temperature_reading
 
@@ -157,6 +157,26 @@ def run_tests(history):
 
     return test_results, temp_test_results
 
+def detect_rate_of_change_faults(history):
+    """Flag unusually large changes in temperature readings."""
+
+    detected_faults = []
+    MAX_TEMPERATURE_CHANGE = 5.0
+
+    for index in range(1, len(history)):
+        previous = history[index - 1]["temperature_reading"]
+        current = history[index]["temperature_reading"]
+
+        change = current - previous
+
+        if abs(change) > MAX_TEMPERATURE_CHANGE:
+            detected_faults.append({
+                "step": history[index]["step"],
+                "change": change,
+                "error": "Abnormal temperature rate of change"
+            })
+
+    return detected_faults
 
 # ============================================================
 # 5. RESULTS AND REPORTING
@@ -231,11 +251,20 @@ def main():
     """Run the complete simulation and testing workflow."""
 
     print("Spacecraft Troubleshooting Test Bench")
-    print("-------------------------------------")
+    print("---------------  ---------------------")
 
     history = simulate_spacecraft()
     test_results = run_tests(history)
     report_results(history, test_results)
+
+    detected_faults = detect_rate_of_change_faults(history)
+
+    print("\nRate-of-change fault detections:")
+    for fault in detected_faults:
+        print(
+            f"  Step {fault['step']}: {fault['error']} "
+            f"(change: {fault['change']:.2f} °F)"
+        )
 
 
 if __name__ == "__main__":

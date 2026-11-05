@@ -41,6 +41,7 @@ def simulate_spacecraft():
         actual_angle_before = actual_angle
 
         sensor_reading = read_sensor(actual_angle_before, step)
+        secondary_sensor_reading = read_secondary_sensor(actual_angle_before)
 
         # Generate a temperature sensor reading.
         temperature_reading = read_temperature_sensor(step)
@@ -57,6 +58,7 @@ def simulate_spacecraft():
             "actual_angle": actual_angle_before,
             "next_actual_angle": actual_angle,
             "sensor_reading": sensor_reading,
+            "secondary_sensor_reading": secondary_sensor_reading,
             "control_command": control_command,
             "temperature_reading": temperature_reading
         })
@@ -76,10 +78,16 @@ def read_sensor(actual_angle, step):
     sensor_reading = actual_angle + noise
 
     # Apply FAULT_OFFSET when step >= FAULT_START_STEP.
-    if step >= FAULT_START_STEP:
+    if step >= FAULT_START_STEP and step < FAULT_START_STEP + 5:  # Fault lasts for 5 steps
         sensor_reading += FAULT_OFFSET
 
     return sensor_reading
+
+def read_secondary_sensor(actual_angle):
+    """Generate an independent secondary sensor reading."""
+
+    noise = random.uniform(-SENSOR_NOISE, SENSOR_NOISE)
+    return actual_angle + noise
 
 def read_temperature_sensor(step):
     """Generate a temperature sensor reading, including noise and faults."""
@@ -111,14 +119,25 @@ def run_tests(history):
     for entry in history:
         step = entry["step"]
         actual_angle = entry["actual_angle"]
-        sensor_reading = entry["sensor_reading"]
         control_command = entry["control_command"]
+        primary_reading = entry["sensor_reading"]
+        secondary_reading = entry["secondary_sensor_reading"]
 
         # Check whether sensor readings are plausible.
-        MAX_SENSOR_ERROR = 0.5
-        plausible = abs(sensor_reading - actual_angle) <= MAX_SENSOR_ERROR
-        if not plausible:
-            test_results.append({"step": step, "error": "Implausible sensor reading"})
+        #MAX_SENSOR_ERROR = 0.5
+        #plausible = abs(sensor_reading - actual_angle) <= MAX_SENSOR_ERROR
+        #if not plausible:
+        #    test_results.append({"step": step, "error": "Implausible sensor reading"})
+
+        #method 2. Check if spacecraft sensor matches old sensor reading. If not, flag as a fault.
+        difference = abs(primary_reading - secondary_reading)
+        MAX_DIFFERENCE = 5.0
+        if difference > MAX_DIFFERENCE:
+            test_results.append({
+            "step": step,
+            "error": "Primary and secondary sensor readings differ significantly"
+            })
+
 
         # # Detect when sensor readings disagree with reality.
         # if step >= FAULT_START_STEP and abs(sensor_reading - actual_angle) < FAULT_OFFSET:
@@ -191,7 +210,9 @@ def report_results(history, test_results):
     # Plot angle data.
     plt.subplot(2, 1, 1)
     plt.plot(steps, actual_angles, label="Actual Angle", marker='o')
-    plt.plot(steps, sensor_readings, label="Sensor Reading", linestyle='--', marker='x')
+    plt.plot(steps, sensor_readings, label="Primary Sensor Reading", linestyle='--', marker='x')
+    secondary_sensor_readings = [entry["secondary_sensor_reading"] for entry in history]
+    plt.plot(steps, secondary_sensor_readings, label="Secondary Sensor Reading", linestyle='-.', marker='^')
     plt.axvline(x=FAULT_START_STEP, color='red', linestyle='--', label="Fault Start")
     plt.xlabel("Time Step")
     plt.ylabel("Angle (degrees)")
